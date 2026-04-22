@@ -34,7 +34,7 @@ def read_box_number(image_bytes: bytes, media_type: str = "image/jpeg") -> str |
         image_b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
 
         message = _client.messages.create(
-            model="claude-opus-4-5",
+            model="claude-haiku-4-5",
             max_tokens=64,
             messages=[
                 {
