@@ -67,6 +67,9 @@ logger = logging.getLogger(__name__)
 # ============================================================
 
 def _is_authorized(update: Update) -> bool:
+    # TELEGRAM_USER_IDが未設定なら誰でも使える
+    if config.TELEGRAM_USER_ID is None:
+        return True
     user = update.effective_user
     return user is not None and user.id == config.TELEGRAM_USER_ID
 
@@ -539,7 +542,7 @@ async def handle_after_save(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                   "nedan", "irisu", "kibou_tanka", "kuchisu"]:
             ctx.user_data.pop(k, None)
         await q.edit_message_text(
-            f"同じ箱（{ctx.user_data['box_number']}）で続けます。\n\n"
+            f"同じ箱({ctx.user_data['box_number']})で続けます。\n\n"
             "次の花の全体写真を送ってください。"
         )
         return WAIT_FLOWER_1
@@ -622,6 +625,14 @@ def main():
     )
 
     app.add_handler(conv)
+
+    if config.TELEGRAM_USER_ID is None:
+        logger.warning(
+            "⚠ TELEGRAM_USER_ID が未設定です。誰でもこのボットを使える状態になっています。"
+            "運用時は環境変数に TELEGRAM_USER_ID を追加することを推奨します。"
+        )
+    else:
+        logger.info("制限モード: User ID %s のみ許可", config.TELEGRAM_USER_ID)
 
     logger.info("Bot starting...")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
