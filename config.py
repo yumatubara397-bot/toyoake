@@ -17,7 +17,10 @@ def _get(name: str, required: bool = True) -> str:
 
 # Telegram
 TELEGRAM_BOT_TOKEN = _get("TELEGRAM_BOT_TOKEN")
-TELEGRAM_USER_ID = int(_get("TELEGRAM_USER_ID"))  # 許可する唯一のユーザー
+# TELEGRAM_USER_IDは任意。設定されていれば、そのユーザーだけ使えるよう制限する。
+# 設定されていなければ誰でも使える（後から環境変数に追加すれば制限モードに切り替わる）
+_user_id_raw = os.environ.get("TELEGRAM_USER_ID", "").strip()
+TELEGRAM_USER_ID: int | None = int(_user_id_raw) if _user_id_raw else None
 
 # Anthropic
 ANTHROPIC_API_KEY = _get("ANTHROPIC_API_KEY")
