@@ -6,8 +6,8 @@ import os
 import logging
 import tempfile
 from pathlib import Path
-from fastapi import FastAPI, HTTPException, Header, BackgroundTasks
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, HTTPException, Header, BackgroundTasks, Body
+from fastapi.responses import JSONResponse, HTMLResponse
 
 from shukka import ShukkaWorker, ShukkaItem
 from config import DEFAULT_SIZE, SCREENSHOT_DIR
@@ -70,19 +70,110 @@ async def start_shukka(
     return {"status": "accepted", "message": "テスト1件の登録を開始しました"}
 
 
-@app.get("/shukka/test-login")
+@app.get("/shukka/test-login", response_class=HTMLResponse)
+async def test_login_form():
+    """ブラウザで開くとID/PW入力フォームが表示される"""
+    return """
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>イロドリミドリ ログインテスト</title>
+<style>
+  body { font-family: sans-serif; max-width: 500px; margin: 40px auto; padding: 20px; }
+  h1 { color: #2E75B6; }
+  label { display: block; margin-top: 15px; font-weight: bold; }
+  input { width: 100%; padding: 10px; font-size: 16px; margin-top: 5px; box-sizing: border-box; }
+  button { margin-top: 20px; padding: 12px 24px; background: #2E75B6; color: white; border: 0; font-size: 16px; border-radius: 4px; cursor: pointer; }
+  button:hover { background: #1F4E79; }
+  #result { margin-top: 20px; padding: 15px; background: #f5f5f5; border-radius: 4px; white-space: pre-wrap; font-family: monospace; font-size: 13px; display: none; }
+  #result.ok { background: #d4edda; color: #155724; }
+  #result.err { background: #f8d7da; color: #721c24; }
+  .shots a { display: inline-block; margin: 2px 5px 0 0; background: #2E75B6; color: white; padding: 4px 10px; border-radius: 3px; text-decoration: none; font-size: 12px; }
+</style>
+</head>
+<body>
+<h1>🔐 イロドリミドリ ログインテスト</h1>
+<p>ID / パスワードは送信時のみ使われ、保存されません。</p>
+
+<label>ユーザーID</label>
+<input id="uid" type="text" placeholder="tensawa0" autocomplete="off">
+
+<label>パスワード</label>
+<input id="pw" type="password" placeholder="パスワードを入力" autocomplete="off">
+
+<button onclick="doTest()">ログインテスト実行</button>
+
+<div id="result"></div>
+
+<script>
+async function doTest() {
+  const uid = document.getElementById('uid').value;
+  const pw = document.getElementById('pw').value;
+  const result = document.getElementById('result');
+  result.style.display = 'block';
+  result.className = '';
+  result.textContent = '⏳ 実行中...ブラウザが起動してログイン操作中（最大60秒）';
+  try {
+    const r = await fetch('/shukka/test-login', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({user_id: uid, password: pw})
+    });
+    const j = await r.json();
+    result.className = j.status === 'ok' ? 'ok' : 'err';
+    let html = (j.status === 'ok' ? '✅ ' : '❌ ') + j.message + '\\n\\nスクリーンショット:\\n';
+    result.textContent = html;
+    if (j.screenshots && j.screenshots.length > 0) {
+      const div = document.createElement('div');
+      div.className = 'shots';
+      j.screenshots.forEach(s => {
+        const a = document.createElement('a');
+        a.href = '/shot/' + s;
+        a.target = '_blank';
+        a.textContent = s;
+        div.appendChild(a);
+      });
+      result.appendChild(div);
+    }
+  } catch(e) {
+    result.className = 'err';
+    result.textContent = '⚠ 通信エラー: ' + e.message;
+  }
+}
+</script>
+</body>
+</html>
+"""
+
+
 @app.post("/shukka/test-login")
-async def test_login(authorization: str | None = Header(None)):
+async def test_login(
+    body: dict = Body(default_factory=dict),
+    authorization: str | None = Header(None),
+):
     """
-    ログインのみテスト（Step 2 最初の確認用）
+    ログインのみテスト（POST版）
+    ボディ: {"user_id": "xxx", "password": "yyy"}
     """
     _check_auth(authorization)
+
+    user_id = body.get("user_id") or None
+    password = body.get("password") or None
+
+    # 一時的にconfigを上書き（このリクエスト中だけ）
+    import config as _cfg
+    original_user = _cfg.IM_USER_ID
+    original_pw = _cfg.IM_PASSWORD
+    if user_id:
+        _cfg.IM_USER_ID = user_id
+    if password:
+        _cfg.IM_PASSWORD = password
 
     shots = []
     try:
         async with ShukkaWorker() as worker:
             ok = await worker.login()
-            # スクショの一覧を返す
             import os as _os
             if _os.path.exists(SCREENSHOT_DIR):
                 shots = sorted(_os.listdir(SCREENSHOT_DIR))
@@ -102,6 +193,9 @@ async def test_login(authorization: str | None = Header(None)):
             status_code=500,
             content={"status": "error", "message": str(e), "screenshots": shots}
         )
+    finally:
+        _cfg.IM_USER_ID = original_user
+        _cfg.IM_PASSWORD = original_pw
 
 
 @app.get("/shot/{filename}")
