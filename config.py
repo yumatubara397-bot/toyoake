@@ -17,8 +17,8 @@ def _get(name: str, required: bool = True) -> str:
 
 # Telegram
 TELEGRAM_BOT_TOKEN = _get("TELEGRAM_BOT_TOKEN")
-# TELEGRAM_USER_IDは任意。設定されていれば、そのユーザーだけ使えるよう制限する。
-# 設定されていなければ誰でも使える（後から環境変数に追加すれば制限モードに切り替わる）
+
+# TELEGRAM_USER_ID はオプション（空なら誰でも使える）
 _user_id_raw = os.environ.get("TELEGRAM_USER_ID", "").strip()
 TELEGRAM_USER_ID: int | None = int(_user_id_raw) if _user_id_raw else None
 
@@ -26,14 +26,28 @@ TELEGRAM_USER_ID: int | None = int(_user_id_raw) if _user_id_raw else None
 ANTHROPIC_API_KEY = _get("ANTHROPIC_API_KEY")
 
 # Google
-# Service AccountのJSONは、ファイルパスではなくJSON文字列そのものを環境変数に入れる
-# (Railwayの環境変数は文字列のみ扱えるため)
 GOOGLE_SERVICE_ACCOUNT_JSON = _get("GOOGLE_SERVICE_ACCOUNT_JSON")
 SPREADSHEET_ID = _get("SPREADSHEET_ID")
 DRIVE_PARENT_FOLDER_ID = _get("DRIVE_PARENT_FOLDER_ID")
 
-# スプレッドシートのシート名（固定）
-SHEET_NAME = "出品データ"
+# スプレッドシートのテンプレートシート名（ヘッダーのお手本）
+# これが存在すればヘッダーをコピーしてユーザー用シートを作る
+TEMPLATE_SHEET_NAME = "出品データ"
+
+# シートのヘッダー列（全11列）
+SHEET_HEADERS = [
+    "タイムスタンプ",
+    "箱番号",
+    "品種",
+    "サイズ",
+    "値段",
+    "入数",
+    "希望単価",
+    "口数",
+    "全体写真",
+    "アップ写真",
+    "出品ステータス",
+]
 
 # 選択肢マスタ
 HINSHU_LIST = [
@@ -50,7 +64,8 @@ HINSHU_LIST = [
 
 SIZE_OPTIONS = ["99.0"]
 NEDAN_OPTIONS = [5000, 6000, 7000, 8000, 9000]
-IRISU_OPTIONS = [72, 105, 128]
+# 拡張: 16/20/32/50/54/72/78/105/128 の昇順
+IRISU_OPTIONS = [16, 20, 32, 50, 54, 72, 78, 105, 128]
 KUCHISU_OPTIONS = [1]
 
 
