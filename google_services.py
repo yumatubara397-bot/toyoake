@@ -1,5 +1,6 @@
 """
 Google Sheets と Google Drive への書き込み
+ユーザーごとにシート（タブ）を自動作成する
 """
 import io
 import logging
@@ -28,9 +29,52 @@ _gc = gspread.authorize(_creds)
 _drive = build("drive", "v3", credentials=_creds, cache_discovery=False)
 
 
-def _sheet():
-    sh = _gc.open_by_key(config.SPREADSHEET_ID)
-    return sh.worksheet(config.SHEET_NAME)
+def _spreadsheet():
+    return _gc.open_by_key(config.SPREADSHEET_ID)
+
+
+def _normalize_sheet_name(username: str | None, user_id: int | None) -> str:
+    """
+    ユーザーごとのシート名を決める。
+      - username があれば "@username"
+      - なければ "id_123456789"
+      - どちらもなければ "unknown"
+    """
+    if username:
+        # @ が付いていなければ付ける（統一）
+        if not username.startswith("@"):
+            username = "@" + username
+        # シート名に使えない文字を置換（Googleの制限）
+        for bad in "/\\[]*?:":
+            username = username.replace(bad, "_")
+        return username[:100]  # 念のため長さ制限
+    if user_id is not None:
+        return f"id_{user_id}"
+    return "unknown"
+
+
+def _get_or_create_user_sheet(sheet_name: str):
+    """
+    指定名のシートを取得。なければ作成してヘッダーも書き込む。
+    """
+    sh = _spreadsheet()
+    try:
+        ws = sh.worksheet(sheet_name)
+        logger.info("Using existing sheet: %s", sheet_name)
+        return ws
+    except gspread.exceptions.WorksheetNotFound:
+        pass
+
+    # 新規作成（列数 = HEADERS の長さ、行数は多めに確保）
+    ws = sh.add_worksheet(
+        title=sheet_name,
+        rows=1000,
+        cols=len(config.SHEET_HEADERS),
+    )
+    # ヘッダー行を書き込み
+    ws.append_row(config.SHEET_HEADERS, value_input_option="USER_ENTERED")
+    logger.info("Created new sheet: %s", sheet_name)
+    return ws
 
 
 # ============================================================
@@ -43,7 +87,6 @@ def get_or_create_box_folder(box_number: str) -> str:
     親フォルダ配下に「箱番号」という名前でフォルダを作る。
     フォルダIDを返す。
     """
-    # 既存チェック
     query = (
         f"'{config.DRIVE_PARENT_FOLDER_ID}' in parents "
         f"and name = '{box_number}' "
@@ -96,14 +139,21 @@ def upload_photo(
 # Google Sheets
 # ============================================================
 
-def append_row(data: dict) -> None:
+def append_row(data: dict, username: str | None = None, user_id: int | None = None) -> str:
     """
-    出品1件分をスプレッドシートに追記する。
-    dataの期待キー:
+    出品1件分をユーザー専用シートに追記する。
+    シートが存在しなければ自動で作成する。
+
+    data の期待キー:
         box_number, hinshu, size, nedan, irisu, kibou_tanka, kuchisu,
         zentai_url, up_url
+
+    戻り値: 書き込んだシート名
     """
     now = datetime.now(ZoneInfo("Asia/Tokyo")).strftime("%Y-%m-%d %H:%M:%S")
+
+    sheet_name = _normalize_sheet_name(username, user_id)
+    ws = _get_or_create_user_sheet(sheet_name)
 
     row = [
         now,
@@ -118,5 +168,9 @@ def append_row(data: dict) -> None:
         data["up_url"],
         "未出品",
     ]
-    _sheet().append_row(row, value_input_option="USER_ENTERED")
-    logger.info("Appended row: box=%s hinshu=%s", data["box_number"], data["hinshu"])
+    ws.append_row(row, value_input_option="USER_ENTERED")
+    logger.info(
+        "Appended row to sheet='%s': box=%s hinshu=%s",
+        sheet_name, data["box_number"], data["hinshu"]
+    )
+    return sheet_name
